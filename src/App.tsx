@@ -13,6 +13,15 @@ import { listen } from '@tauri-apps/api/event';
 
 const isTauri = typeof window !== 'undefined' && (window as any).__TAURI_INTERNALS__ !== undefined;
 
+const getUrlExtension = (url: string): string => {
+  if (!url) return 'mp3';
+  const urlLower = url.toLowerCase();
+  if (urlLower.includes('.flac')) return 'flac';
+  if (urlLower.includes('.mp3')) return 'mp3';
+  if (urlLower.includes('.m4a')) return 'm4a';
+  return 'mp3';
+};
+
 interface DownloadTask {
   id: string;
   songId: string;
@@ -30,6 +39,7 @@ interface DownloadTask {
     artist: string;
     coverUrl: string;
     type: string;
+    album: string;
   };
 }
 
@@ -50,14 +60,18 @@ export default function App() {
 
   const [settings, setSettings] = useState({
     nameFormat: localStorage.getItem('nameFormat') || 'title-artist',
-    autoPlay: localStorage.getItem('autoPlay') === 'true'
+    autoPlay: localStorage.getItem('autoPlay') === 'true',
+    musicSite: localStorage.getItem('musicSite') || 'https://3g.gljlw.com/music/wy/',
+    musicQuality: localStorage.getItem('musicQuality') || 'lossless'
   });
 
   useEffect(() => {
     const handleSettingsChange = () => {
       setSettings({
         nameFormat: localStorage.getItem('nameFormat') || 'title-artist',
-        autoPlay: localStorage.getItem('autoPlay') === 'true'
+        autoPlay: localStorage.getItem('autoPlay') === 'true',
+        musicSite: localStorage.getItem('musicSite') || 'https://3g.gljlw.com/music/wy/',
+        musicQuality: localStorage.getItem('musicQuality') || 'lossless'
       });
     };
     window.addEventListener('settings-changed', handleSettingsChange);
@@ -90,23 +104,31 @@ export default function App() {
             title: retryPayload.title,
             artist: retryPayload.artist,
             coverUrl: retryPayload.coverUrl,
-            downloadDir
+            downloadDir,
+            album: retryPayload.album || ''
           });
         } else {
+          const neteaseCookie = localStorage.getItem('neteaseCookie') || '';
           await invoke('download_lyrics', {
             taskId: task.id,
             id: retryPayload.songId,
             filename: retryPayload.filename,
-            downloadDir
+            downloadDir,
+            apiBase: settings.musicSite,
+            cookie: neteaseCookie
           });
         }
       } else {
         // Web 模式下載
         if (task.songId === 'zip') {
+          const neteaseCookie = localStorage.getItem('neteaseCookie') || '';
           const response = await axios.post('/api/download-zip', {
             songs: searchResults,
             type: retryPayload.type,
-            nameFormat: settings.nameFormat
+            nameFormat: settings.nameFormat,
+            api_base: settings.musicSite,
+            cookie: neteaseCookie,
+            quality: settings.musicQuality
           }, {
             responseType: 'blob',
             onDownloadProgress: (progressEvent) => {
@@ -135,6 +157,9 @@ export default function App() {
           if (retryPayload.coverUrl) {
             downloadQueryParams.append('coverUrl', retryPayload.coverUrl);
           }
+          if (retryPayload.album) {
+            downloadQueryParams.append('album', retryPayload.album);
+          }
 
           const response = await axios.get(`/api/download?${downloadQueryParams.toString()}`, {
             responseType: 'blob',
@@ -149,16 +174,20 @@ export default function App() {
           const url = window.URL.createObjectURL(new Blob([response.data]));
           const link = document.createElement('a');
           link.href = url;
-          link.setAttribute('download', `${retryPayload.filename}.mp3`);
+          const ext = getUrlExtension(retryPayload.url);
+          link.setAttribute('download', `${retryPayload.filename}.${ext}`);
           document.body.appendChild(link);
           link.click();
           link.parentNode?.removeChild(link);
           window.URL.revokeObjectURL(url);
         } else {
+          const neteaseCookie = localStorage.getItem('neteaseCookie') || '';
           const response = await axios.get(`/api/lyrics`, {
             params: {
               id: retryPayload.songId,
-              filename: retryPayload.filename
+              filename: retryPayload.filename,
+              api_base: settings.musicSite,
+              cookie: neteaseCookie
             },
             responseType: 'blob',
             onDownloadProgress: (progressEvent) => {
@@ -253,12 +282,21 @@ export default function App() {
     setIsSearching(true);
     setCurrentSong(null);
     try {
+      const neteaseCookie = localStorage.getItem('neteaseCookie') || '';
       if (isTauri) {
-        const results = await invoke<SearchResult[]>('search_music', { keywords: searchQuery });
+        const results = await invoke<SearchResult[]>('search_music', { 
+          keywords: searchQuery, 
+          apiBase: settings.musicSite,
+          cookie: neteaseCookie
+        });
         setSearchResults(results);
       } else {
         const { data } = await axios.get('/api/search', {
-          params: { keywords: searchQuery }
+          params: { 
+            keywords: searchQuery, 
+            api_base: settings.musicSite,
+            cookie: neteaseCookie
+          }
         });
         setSearchResults(data.data || []);
       }
@@ -288,12 +326,23 @@ export default function App() {
     setSearchResults([]);
     
     try {
+      const neteaseCookie = localStorage.getItem('neteaseCookie') || '';
       if (isTauri) {
-        const detail = await invoke<SongDetail>('get_song_detail', { id });
+        const detail = await invoke<SongDetail>('get_song_detail', { 
+          id, 
+          apiBase: settings.musicSite,
+          cookie: neteaseCookie,
+          quality: settings.musicQuality
+        });
         setCurrentSong(detail);
       } else {
         const { data } = await axios.get('/api/song', {
-          params: { id }
+          params: { 
+            id, 
+            api_base: settings.musicSite,
+            cookie: neteaseCookie,
+            quality: settings.musicQuality
+          }
         });
         setCurrentSong(data.data);
       }
@@ -331,8 +380,9 @@ export default function App() {
           alert('未能獲取到歌單內容，可能是權限限制或為空');
         }
       } else {
+        const neteaseCookie = localStorage.getItem('neteaseCookie') || '';
         const { data } = await axios.get('/api/playlist', {
-          params: { id }
+          params: { id, cookie: neteaseCookie }
         });
         setSearchResults(data.data || []);
         if (!data.data || data.data.length === 0) {
@@ -369,7 +419,8 @@ export default function App() {
         title: '',
         artist: '',
         coverUrl: '',
-        type
+        type,
+        album: ''
       }
     };
 
@@ -394,10 +445,11 @@ export default function App() {
       : (parsedArtist ? `${parsedSongName} - ${parsedArtist}` : parsedSongName);
 
     const taskId = `${currentSong.song_id}-${type}-${Date.now()}`;
+    const ext = type === 'audio' ? getUrlExtension(currentSong.mp3_url) : 'lrc';
     const newTask: DownloadTask = {
       id: taskId,
       songId: currentSong.song_id,
-      title: `${filename}.${type === 'audio' ? 'mp3' : 'lrc'}`,
+      title: `${filename}.${ext}`,
       filename,
       type,
       status: 'pending',
@@ -409,7 +461,8 @@ export default function App() {
         title: parsedSongName,
         artist: parsedArtist,
         coverUrl: currentSong.cover_url || '',
-        type
+        type,
+        album: currentSong.album || ''
       }
     };
 
@@ -442,10 +495,11 @@ export default function App() {
       : (parsedArtist ? `${parsedSongName} - ${parsedArtist}` : parsedSongName);
 
     const taskId = `${currentSong.song_id}-${type}-${Date.now()}`;
+    const ext = type === 'audio' ? getUrlExtension(currentSong.mp3_url) : 'lrc';
     const newTask: DownloadTask = {
       id: taskId,
       songId: currentSong.song_id,
-      title: `${filename}.${type === 'audio' ? 'mp3' : 'lrc'}`,
+      title: `${filename}.${ext}`,
       filename,
       type,
       status: 'pending',
@@ -457,7 +511,8 @@ export default function App() {
         title: parsedSongName,
         artist: parsedArtist,
         coverUrl: currentSong.cover_url || '',
-        type
+        type,
+        album: currentSong.album || ''
       }
     };
 
@@ -482,9 +537,15 @@ export default function App() {
 
     // 非同步在背景解析歌曲詳情並推入下載佇列
     (async () => {
+      const neteaseCookie = localStorage.getItem('neteaseCookie') || '';
       for (const song of searchResults) {
         try {
-          const detail = await invoke<SongDetail>('get_song_detail', { id: song.song_id });
+          const detail = await invoke<SongDetail>('get_song_detail', { 
+            id: song.song_id, 
+            apiBase: settings.musicSite,
+            cookie: neteaseCookie,
+            quality: settings.musicQuality
+          });
           let parsedSongName = detail.title;
           let parsedArtist = '';
           if (detail.title.includes(' - ')) {
@@ -500,10 +561,11 @@ export default function App() {
           const newTasks: DownloadTask[] = [];
 
           if ((type === 'all' || type === 'audio') && detail.mp3_url) {
+            const ext = getUrlExtension(detail.mp3_url);
             newTasks.push({
               id: `${detail.song_id}-audio-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
               songId: detail.song_id,
-              title: `${filename}.mp3`,
+              title: `${filename}.${ext}`,
               filename,
               type: 'audio',
               status: 'pending',
@@ -515,7 +577,8 @@ export default function App() {
                 title: parsedSongName,
                 artist: parsedArtist,
                 coverUrl: detail.cover_url || '',
-                type: 'audio'
+                type: 'audio',
+                album: detail.album || ''
               }
             });
           }
@@ -536,7 +599,8 @@ export default function App() {
                 title: parsedSongName,
                 artist: parsedArtist,
                 coverUrl: detail.cover_url || '',
-                type: 'lyric'
+                type: 'lyric',
+                album: detail.album || ''
               }
             });
           }
@@ -562,7 +626,8 @@ export default function App() {
               title: song.title,
               artist: '',
               coverUrl: '',
-              type: 'audio'
+              type: 'audio',
+              album: ''
             }
           }]);
         }
@@ -574,12 +639,23 @@ export default function App() {
     setIsLoadingDetail(true);
     setCurrentSong(null);
     try {
+      const neteaseCookie = localStorage.getItem('neteaseCookie') || '';
       if (isTauri) {
-        const detail = await invoke<SongDetail>('get_song_detail', { id: song.song_id });
+        const detail = await invoke<SongDetail>('get_song_detail', { 
+          id: song.song_id, 
+          apiBase: settings.musicSite,
+          cookie: neteaseCookie,
+          quality: settings.musicQuality
+        });
         setCurrentSong(detail);
       } else {
         const { data } = await axios.get('/api/song', {
-          params: { id: song.song_id }
+          params: { 
+            id: song.song_id, 
+            api_base: settings.musicSite,
+            cookie: neteaseCookie,
+            quality: settings.musicQuality
+          }
         });
         setCurrentSong(data.data);
       }
