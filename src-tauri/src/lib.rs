@@ -24,15 +24,69 @@ pub struct SongDetail {
     pub cover_url: String,
     pub mp3_url: String,
     pub lyric_query: Option<String>,
+    pub album: Option<String>,
 }
 
 #[tauri::command]
-async fn search_music(keywords: String) -> Result<Vec<SearchResult>, String> {
-    let url = format!("https://3g.gljlw.com/music/wy/search.php?keywords={}", encode(&keywords));
+async fn search_music(keywords: String, api_base: Option<String>, cookie: Option<String>) -> Result<Vec<SearchResult>, String> {
+    let api_base_val = api_base.clone().unwrap_or_default();
+    if api_base_val == "official" {
+        let client = reqwest::Client::new();
+        let mut req = client.post("https://music.163.com/api/cloudsearch/pc")
+            .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Safari/537.36 Chrome/91.0.4472.164 NeteaseMusicDesktop/2.10.2.200154")
+            .header("Referer", "https://music.163.com/")
+            .form(&[
+                ("s", &keywords),
+                ("type", &"1".to_string()),
+                ("limit", &"30".to_string()),
+            ]);
+        if let Some(ref c) = cookie {
+            if !c.trim().is_empty() {
+                req = req.header("Cookie", c);
+            }
+        }
+        let res = req.send().await.map_err(|e| e.to_string())?;
+        let res_text = res.text().await.map_err(|e| e.to_string())?;
+        let json: serde_json::Value = serde_json::from_str(&res_text).map_err(|e| e.to_string())?;
+        let mut results = Vec::new();
+        if let Some(songs) = json.pointer("/result/songs").and_then(|v| v.as_array()) {
+            for song in songs {
+                let id = song.get("id").and_then(|v| v.as_i64()).map(|v| v.to_string()).unwrap_or_default();
+                let name = song.get("name").and_then(|v| v.as_str()).unwrap_or("");
+                let mut artist_names = Vec::new();
+                if let Some(ar_array) = song.get("ar").and_then(|v| v.as_array()) {
+                    for ar in ar_array {
+                        if let Some(name) = ar.get("name").and_then(|v| v.as_str()) {
+                            artist_names.push(name);
+                        }
+                    }
+                }
+                let artists = artist_names.join("/");
+                let title = if artists.is_empty() {
+                    name.to_string()
+                } else {
+                    format!("{} - {}", name, artists)
+                };
+                if !id.is_empty() {
+                    results.push(SearchResult {
+                        title,
+                        song_id: id,
+                    });
+                }
+            }
+        }
+        return Ok(results);
+    }
+
+    let mut base = api_base.unwrap_or_else(|| "https://3g.gljlw.com/music/wy/".to_string());
+    if !base.ends_with('/') {
+        base.push('/');
+    }
+    let url = format!("{}search.php?keywords={}", base, encode(&keywords));
     let client = reqwest::Client::new();
     let html = client.get(&url)
         .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/100.0.0.0 Safari/537.36")
-        .header("Referer", "https://3g.gljlw.com/music/wy/")
+        .header("Referer", &base)
         .send()
         .await
         .map_err(|e| e.to_string())?
@@ -64,12 +118,118 @@ async fn search_music(keywords: String) -> Result<Vec<SearchResult>, String> {
 }
 
 #[tauri::command]
-async fn get_song_detail(id: String) -> Result<SongDetail, String> {
-    let url = format!("https://3g.gljlw.com/music/wy/info.php?id={}", id);
+async fn get_song_detail(id: String, api_base: Option<String>, cookie: Option<String>, quality: Option<String>) -> Result<SongDetail, String> {
+    let api_base_val = api_base.clone().unwrap_or_default();
+    if api_base_val == "official" {
+        let song_id_i64 = id.parse::<i64>().map_err(|e| e.to_string())?;
+        let client = reqwest::Client::new();
+        
+        // 1. Get Song Details (Metadata)
+        let c_payload = serde_json::json!([{"id": song_id_i64, "v": 0}]).to_string();
+        let mut detail_req = client.post("https://interface3.music.163.com/api/v3/song/detail")
+            .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Safari/537.36 Chrome/91.0.4472.164 NeteaseMusicDesktop/2.10.2.200154")
+            .header("Referer", "https://music.163.com/")
+            .form(&[("c", &c_payload)]);
+        if let Some(ref c) = cookie {
+            if !c.trim().is_empty() {
+                detail_req = detail_req.header("Cookie", c);
+            }
+        }
+        let detail_res = detail_req.send().await.map_err(|e| e.to_string())?;
+        let detail_text = detail_res.text().await.map_err(|e| e.to_string())?;
+        let detail_json: serde_json::Value = serde_json::from_str(&detail_text).map_err(|e| e.to_string())?;
+        
+        let song_obj = detail_json.pointer("/songs/0");
+        let name = song_obj.and_then(|s| s.get("name")).and_then(|v| v.as_str()).unwrap_or("");
+        
+        let mut artist_names = Vec::new();
+        if let Some(ar_array) = song_obj.and_then(|s| s.get("ar")).and_then(|v| v.as_array()) {
+            for ar in ar_array {
+                if let Some(name) = ar.get("name").and_then(|v| v.as_str()) {
+                    artist_names.push(name);
+                }
+            }
+        }
+        let artists = artist_names.join("/");
+        let title = if artists.is_empty() {
+            name.to_string()
+        } else {
+            format!("{} - {}", name, artists)
+        };
+        
+        let cover_url = song_obj.and_then(|s| s.pointer("/al/picUrl")).and_then(|v| v.as_str()).unwrap_or("").to_string();
+        
+        // 2. Get Playback URL
+        let level_str = quality.clone().unwrap_or_else(|| "lossless".to_string());
+        let mut mp3_url = "".to_string();
+        let mut levels_to_try = vec![level_str.clone()];
+        if level_str != "standard" {
+            levels_to_try.push("standard".to_string());
+        }
+
+        for current_level in levels_to_try {
+            use std::time::{SystemTime, UNIX_EPOCH};
+            let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis();
+            let request_id = format!("{}", now % 10000000 + 20000000);
+            let config = serde_json::json!({
+                "os": "pc",
+                "appver": "",
+                "osver": "",
+                "deviceId": "pyncm!",
+                "requestId": request_id
+            });
+            let payload = serde_json::json!({
+                "ids": vec![song_id_i64],
+                "level": current_level,
+                "encodeType": "flac",
+                "header": config.to_string()
+            });
+
+            let params = eapi_encrypt("https://interface3.music.163.com/eapi/song/enhance/player/url/v1", &payload)?;
+            let mut url_req = client.post("https://interface3.music.163.com/eapi/song/enhance/player/url/v1")
+                .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Safari/537.36 Chrome/91.0.4472.164 NeteaseMusicDesktop/2.10.2.200154")
+                .header("Referer", "https://music.163.com/")
+                .form(&[("params", &params)]);
+
+            if let Some(ref c) = cookie {
+                if !c.trim().is_empty() {
+                    url_req = url_req.header("Cookie", c);
+                }
+            }
+
+            let url_res = url_req.send().await.map_err(|e| e.to_string())?;
+            let url_text = url_res.text().await.map_err(|e| e.to_string())?;
+            let url_json: serde_json::Value = serde_json::from_str(&url_text).map_err(|e| e.to_string())?;
+
+            if let Some(url_val) = url_json.pointer("/data/0/url").and_then(|v| v.as_str()) {
+                if !url_val.is_empty() {
+                    mp3_url = url_val.to_string();
+                    break;
+                }
+            }
+        }
+
+        let album = song_obj.and_then(|s| s.pointer("/al/name")).and_then(|v| v.as_str()).map(|v| v.to_string());
+
+        return Ok(SongDetail {
+            song_id: id,
+            title,
+            cover_url,
+            mp3_url,
+            lyric_query: Some("official".to_string()),
+            album,
+        });
+    }
+
+    let mut base = api_base.unwrap_or_else(|| "https://3g.gljlw.com/music/wy/".to_string());
+    if !base.ends_with('/') {
+        base.push('/');
+    }
+    let url = format!("{}info.php?id={}", base, id);
     let client = reqwest::Client::new();
     let html = client.get(&url)
         .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/100.0.0.0 Safari/537.36")
-        .header("Referer", "https://3g.gljlw.com/music/wy/")
+        .header("Referer", &base)
         .send()
         .await
         .map_err(|e| e.to_string())?
@@ -151,6 +311,7 @@ async fn get_song_detail(id: String) -> Result<SongDetail, String> {
         cover_url,
         mp3_url,
         lyric_query: Some(lyric_query),
+        album: None,
     })
 }
 
@@ -455,18 +616,57 @@ async fn get_playlist(id: String, cookie: String) -> Result<Vec<SearchResult>, S
 }
 
 #[tauri::command]
-async fn get_lyrics(id: String) -> Result<String, String> {
-    let song_detail = get_song_detail(id.clone()).await?;
+async fn get_lyrics(id: String, api_base: Option<String>, cookie: Option<String>) -> Result<String, String> {
+    let api_base_val = api_base.clone().unwrap_or_default();
+    if api_base_val == "official" {
+        let song_id_i64 = id.parse::<i64>().map_err(|e| e.to_string())?;
+        let client = reqwest::Client::new();
+        let mut req = client.post("https://interface3.music.163.com/api/song/lyric")
+            .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Safari/537.36 Chrome/91.0.4472.164 NeteaseMusicDesktop/2.10.2.200154")
+            .header("Referer", "https://music.163.com/")
+            .form(&[
+                ("id", &song_id_i64.to_string()),
+                ("cp", &"false".to_string()),
+                ("tv", &"0".to_string()),
+                ("lv", &"0".to_string()),
+                ("rv", &"0".to_string()),
+                ("kv", &"0".to_string()),
+                ("yv", &"0".to_string()),
+                ("ytv", &"0".to_string()),
+                ("yrv", &"0".to_string()),
+            ]);
+        if let Some(ref c) = cookie {
+            if !c.trim().is_empty() {
+                req = req.header("Cookie", c);
+            }
+        }
+        let res = req.send().await.map_err(|e| e.to_string())?;
+        let res_text = res.text().await.map_err(|e| e.to_string())?;
+        let json: serde_json::Value = serde_json::from_str(&res_text).map_err(|e| e.to_string())?;
+        if let Some(lyric) = json.pointer("/lrc/lyric").and_then(|v| v.as_str()) {
+            if !lyric.is_empty() {
+                return Ok(lyric.to_string());
+            }
+        }
+        return Ok("[00:00.000] 暂无歌词\n".to_string());
+    }
+
+    let song_detail = get_song_detail(id.clone(), api_base.clone(), cookie.clone(), None).await?;
     let lyric_query = song_detail.lyric_query.unwrap_or_default();
     if lyric_query.is_empty() {
         return Ok("[00:00.000] 暫無歌詞\n".to_string());
     }
 
-    let url = format!("https://3g.gljlw.com/music/wy/{}", lyric_query);
+    let mut base = api_base.unwrap_or_else(|| "https://3g.gljlw.com/music/wy/".to_string());
+    if !base.ends_with('/') {
+        base.push('/');
+    }
+
+    let url = format!("{}{}", base, lyric_query);
     let client = reqwest::Client::new();
     let html = client.get(&url)
         .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
-        .header("Referer", &format!("https://3g.gljlw.com/music/wy/info.php?id={}", id))
+        .header("Referer", &format!("{}info.php?id={}", base, id))
         .send()
         .await
         .map_err(|e| e.to_string())?
@@ -501,6 +701,28 @@ async fn get_lyrics(id: String) -> Result<String, String> {
     Ok(lrc_content)
 }
 
+fn determine_extension(url: &str, content_type: &str) -> &'static str {
+    let url_lower = url.to_lowercase();
+    if url_lower.contains(".flac") {
+        "flac"
+    } else if url_lower.contains(".mp3") {
+        "mp3"
+    } else if url_lower.contains(".m4a") {
+        "m4a"
+    } else {
+        let ct_lower = content_type.to_lowercase();
+        if ct_lower.contains("flac") {
+            "flac"
+        } else if ct_lower.contains("mpeg") || ct_lower.contains("mp3") {
+            "mp3"
+        } else if ct_lower.contains("mp4") || ct_lower.contains("m4a") {
+            "m4a"
+        } else {
+            "mp3"
+        }
+    }
+}
+
 #[tauri::command]
 fn select_download_directory() -> Option<String> {
     rfd::FileDialog::new()
@@ -518,6 +740,7 @@ async fn download_song(
     artist: String,
     cover_url: String,
     download_dir: String,
+    album: String,
 ) -> Result<(), String> {
     let client = reqwest::Client::new();
     
@@ -528,13 +751,21 @@ async fn download_song(
         "status": "downloading"
     }));
 
-    // 1. Download MP3
+    // 1. Download audio file
     let mut mp3_res = client.get(&url)
         .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
         .send()
         .await
-        .map_err(|e| format!("Failed to download MP3: {}", e))?;
+        .map_err(|e| format!("Failed to download audio: {}", e))?;
     
+    let content_type = mp3_res.headers()
+        .get(reqwest::header::CONTENT_TYPE)
+        .and_then(|val| val.to_str().ok())
+        .unwrap_or("")
+        .to_string();
+
+    let file_ext = determine_extension(&url, &content_type);
+
     let total_size = mp3_res.content_length().unwrap_or(0);
     let mut mp3_bytes = Vec::new();
     if total_size > 0 {
@@ -574,25 +805,44 @@ async fn download_song(
 
     // 3. Write file
     let safe_filename = filename.replace(|c: char| "/\\?%*:|\"<>".contains(c), "-");
-    let path = Path::new(&download_dir).join(format!("{}.mp3", safe_filename));
+    let path = Path::new(&download_dir).join(format!("{}.{}", safe_filename, file_ext));
 
     fs::write(&path, &mp3_bytes)
-        .map_err(|e| format!("Failed to write MP3 file: {}", e))?;
+        .map_err(|e| format!("Failed to write audio file: {}", e))?;
 
-    // 4. Write ID3 Tags
-    let mut tag = Tag::read_from_path(&path).unwrap_or_else(|_| Tag::new());
-    tag.set_title(title);
-    tag.set_artist(artist);
-    if let Some(cb) = cover_bytes {
-        let mime = if cover_url.ends_with(".png") { "image/png" } else { "image/jpeg" };
-        tag.add_frame(Picture {
-            mime_type: mime.to_string(),
-            picture_type: PictureType::CoverFront,
-            description: "Cover".to_string(),
-            data: cb,
-        });
+    // 4. Write Tags
+    if file_ext == "mp3" {
+        let mut tag = Tag::read_from_path(&path).unwrap_or_else(|_| Tag::new());
+        tag.set_title(title);
+        tag.set_artist(artist);
+        if !album.is_empty() {
+            tag.set_album(album.clone());
+        }
+        if let Some(cb) = cover_bytes {
+            let mime = if cover_url.ends_with(".png") { "image/png" } else { "image/jpeg" };
+            tag.add_frame(Picture {
+                mime_type: mime.to_string(),
+                picture_type: PictureType::CoverFront,
+                description: "Cover".to_string(),
+                data: cb,
+            });
+        }
+        let _ = tag.write_to_path(&path, Version::Id3v24);
+    } else if file_ext == "flac" {
+        if let Ok(mut tag) = metaflac::Tag::read_from_path(&path) {
+            let vorbis = tag.vorbis_comments_mut();
+            vorbis.set_title(vec![title]);
+            vorbis.set_artist(vec![artist]);
+            if !album.is_empty() {
+                vorbis.set_album(vec![album]);
+            }
+            if let Some(cb) = cover_bytes {
+                let mime = if cover_url.ends_with(".png") { "image/png" } else { "image/jpeg" };
+                tag.add_picture(mime, metaflac::block::PictureType::CoverFront, cb);
+            }
+            let _ = tag.save();
+        }
     }
-    let _ = tag.write_to_path(&path, Version::Id3v24);
 
     let _ = window.emit("download-progress", serde_json::json!({
         "taskId": task_id,
@@ -610,6 +860,8 @@ async fn download_lyrics(
     id: String,
     filename: String,
     download_dir: String,
+    api_base: Option<String>,
+    cookie: Option<String>,
 ) -> Result<(), String> {
     let _ = window.emit("download-progress", serde_json::json!({
         "taskId": task_id,
@@ -617,7 +869,7 @@ async fn download_lyrics(
         "status": "downloading"
     }));
 
-    let lrc_content = get_lyrics(id).await?;
+    let lrc_content = get_lyrics(id, api_base, cookie).await?;
     let safe_filename = filename.replace(|c: char| "/\\?%*:|\"<>".contains(c), "-");
     let path = Path::new(&download_dir).join(format!("{}.lrc", safe_filename));
     fs::write(&path, lrc_content.as_bytes())

@@ -4,6 +4,21 @@ import { invoke } from '@tauri-apps/api/core';
 
 const isTauri = typeof window !== 'undefined' && (window as any).__TAURI_INTERNALS__ !== undefined;
 
+const MUSIC_SITES = [
+  {
+    name: '領機網',
+    url: 'https://3g.gljlw.com/music/wy/',
+    tag: '無cookie海外用戶使用',
+    badge: '預設'
+  },
+  {
+    name: '官方網易雲直連',
+    url: 'official',
+    tag: '需填入 Cookie，支持無損/高音質',
+    badge: '官方'
+  }
+];
+
 interface SettingsModalProps {
   onClose: () => void;
 }
@@ -16,6 +31,12 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
   const [autoPlay, setAutoPlay] = useState(localStorage.getItem('autoPlay') === 'true');
   const [downloadPath, setDownloadPath] = useState(localStorage.getItem('downloadPath') || '');
   const [cookie, setCookie] = useState(localStorage.getItem('neteaseCookie') || '');
+  const [musicSite, setMusicSite] = useState(
+    localStorage.getItem('musicSite') || 'https://3g.gljlw.com/music/wy/'
+  );
+  const [musicQuality, setMusicQuality] = useState<string>(
+    localStorage.getItem('musicQuality') || 'lossless'
+  );
 
   const selectDirectory = async () => {
     try {
@@ -44,6 +65,16 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
     localStorage.setItem('neteaseCookie', cookie);
     window.dispatchEvent(new Event('settings-changed'));
   }, [cookie]);
+
+  useEffect(() => {
+    localStorage.setItem('musicSite', musicSite);
+    window.dispatchEvent(new Event('settings-changed'));
+  }, [musicSite]);
+
+  useEffect(() => {
+    localStorage.setItem('musicQuality', musicQuality);
+    window.dispatchEvent(new Event('settings-changed'));
+  }, [musicQuality]);
 
   const [showQrModal, setShowQrModal] = useState(false);
   const [qrUnikey, setQrUnikey] = useState<string | null>(null);
@@ -156,6 +187,57 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
               </button>
             </div>
           </section>
+
+          {/* Music Site Selector */}
+          <section className="space-y-4 pt-4 border-t border-[#2a2a2f]">
+            <h3 className="text-[15px] text-gray-400 font-medium">音樂下載站點</h3>
+            <div className="space-y-3">
+              {MUSIC_SITES.map((site) => (
+                <label key={site.url} className="flex items-center justify-between p-4 rounded-xl border border-[#2a2a2f] bg-[#1e1e23] cursor-pointer hover:border-gray-500 transition-colors">
+                  <div>
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="text-[15px]">{site.name}</span>
+                      {site.tag && <span className="text-[10px] px-1.5 py-0.5 rounded bg-[#3885ff]/20 text-[#3885ff]">{site.tag}</span>}
+                      {site.badge && <span className="text-[10px] px-1.5 py-0.5 rounded bg-green-500/20 text-green-400">{site.badge}</span>}
+                    </div>
+                    <div className="text-xs text-gray-500">{site.url}</div>
+                  </div>
+                  <input 
+                    type="radio" 
+                    name="musicSite" 
+                    checked={musicSite === site.url}
+                    onChange={() => setMusicSite(site.url)}
+                    className="w-5 h-5 accent-[#3885ff] bg-[#2a2a2f] border-none cursor-pointer" 
+                  />
+                </label>
+              ))}
+            </div>
+          </section>
+
+          {/* Music Quality Selector */}
+          {musicSite === 'official' && (
+            <section className="space-y-4 pt-4 border-t border-[#2a2a2f]">
+              <h3 className="text-[15px] text-gray-400 font-medium">音樂音質選擇</h3>
+              <div className="grid grid-cols-2 gap-3">
+                {[
+                  { name: '標準音質 (Standard)', value: 'standard', desc: '約 128kbps MP3' },
+                  { name: '極高音質 (Higher)', value: 'exhigh', desc: '約 320kbps MP3' },
+                  { name: '無損音質 (Lossless)', value: 'lossless', desc: 'FLAC 格式' },
+                  { name: '高解析度 (Hi-Res)', value: 'hires', desc: '高品質 FLAC 格式' },
+                ].map((q) => (
+                  <button
+                    key={q.value}
+                    type="button"
+                    onClick={() => setMusicQuality(q.value)}
+                    className={`flex flex-col items-start justify-center p-3 rounded-xl border text-left ${musicQuality === q.value ? 'border-[#3885ff] bg-[#3885ff]/10 text-white' : 'border-[#2a2a2f] bg-[#1e1e23] hover:border-gray-500 text-gray-400'} transition-all`}
+                  >
+                    <span className="text-sm font-medium">{q.name}</span>
+                    <span className="text-[10px] opacity-60 mt-0.5">{q.desc}</span>
+                  </button>
+                ))}
+              </div>
+            </section>
+          )}
 
           {/* Download Config */}
           <section className="space-y-4">

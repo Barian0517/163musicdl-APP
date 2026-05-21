@@ -26,6 +26,7 @@
     "dotenv": "^17.2.3",
     "express": "^4.21.2",
     "lucide-react": "^0.546.0",
+    "metaflac-js": "^1.0.5",
     "motion": "^12.23.24",
     "node-id3": "^0.2.9",
     "react": "^19.0.1",

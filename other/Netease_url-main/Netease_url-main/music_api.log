@@ -1,0 +1,11 @@
+2026-05-21 21:58:49,143 - music_api - INFO - __init__:90 - 音乐API服务初始化完成，下载目录: C:\Users\user\Desktop\code\APP\163musicdl-APP\other\Netease_url-main\Netease_url-main\downloads
+2026-05-21 21:58:57,918 - music_api - INFO - before_request:215 - GET / - IP: 127.0.0.1 - User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:151.0) Gecko/20100101 Firefox/151.0
+2026-05-21 21:58:57,924 - music_api - INFO - after_request:230 - 响应状态: 200
+2026-05-21 21:58:59,493 - music_api - INFO - before_request:215 - GET /favicon.ico - IP: 127.0.0.1 - User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:151.0) Gecko/20100101 Firefox/151.0
+2026-05-21 21:58:59,493 - music_api - INFO - after_request:230 - 响应状态: 404
+2026-05-21 21:59:18,468 - music_api - INFO - before_request:215 - POST /Song_V1 - IP: 127.0.0.1 - User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:151.0) Gecko/20100101 Firefox/151.0
+2026-05-21 21:59:20,436 - music_api - INFO - after_request:230 - 响应状态: 200
+2026-05-21 23:00:43,030 - music_api - INFO - before_request:215 - POST /Song_V1 - IP: 127.0.0.1 - User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:151.0) Gecko/20100101 Firefox/151.0
+2026-05-21 23:00:45,009 - music_api - INFO - after_request:230 - 响应状态: 200
+2026-05-21 23:00:46,802 - music_api - INFO - before_request:215 - POST /Song_V1 - IP: 127.0.0.1 - User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:151.0) Gecko/20100101 Firefox/151.0
+2026-05-21 23:00:48,852 - music_api - INFO - after_request:230 - 响应状态: 200

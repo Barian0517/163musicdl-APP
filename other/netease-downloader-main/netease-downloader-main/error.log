@@ -1,0 +1,7 @@
+--- 2026-05-21 21:43:28.134732 ---
+Traceback (most recent call last):
+  File "C:\Users\user\Desktop\code\APP\163musicdl-APP\netease-downloader-main\netease-downloader-main\main_window.py", line 394, in closeEvent
+    def closeEvent(self, event):
+    
+KeyboardInterrupt
+

@@ -9,4 +9,6 @@ export interface SongDetail {
   cover_url: string;
   mp3_url: string;
   lyric_query?: string;
+  album?: string;
 }
+
