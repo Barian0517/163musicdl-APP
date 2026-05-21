@@ -4,7 +4,8 @@ import axios from 'axios';
 import * as cheerio from 'cheerio';
 import { createServer as createViteServer } from 'vite';
 import NodeID3 from 'node-id3';
-import { ZipArchive } from 'archiver';
+import * as archiverModule from 'archiver';
+const archiver = ((archiverModule as any).default || archiverModule) as any;
 
 const BASE_URL = "https://3g.gljlw.com/music/wy/";
 
@@ -296,7 +297,7 @@ async function startServer() {
         return;
       }
 
-      const archive = new ZipArchive({ zlib: { level: 9 } });
+      const archive = archiver('zip', { zlib: { level: 9 } });
 
       res.setHeader('Content-Type', 'application/zip');
       res.setHeader('Content-Disposition', `attachment; filename="playlist.zip"`);

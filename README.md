@@ -1,20 +1,133 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://ai.google.dev/static/site-assets/images/share-ais-513315318.png" />
-</div>
+# 網易雲音樂下載器 (163musicdl-APP)
 
-# Run and deploy your AI Studio app
+一款基於 **Tauri v2 (Rust)** 與 **React (TypeScript)** 技術所開發的網易雲音樂高品質音樂與歌詞下載器。支援**桌面應用程式端 (Tauri)** 與**網頁全端模式 (Node.js/Express)**，提供極致流暢的背景下載與無障礙的使用體驗。
 
-This contains everything you need to run your app locally.
+---
 
-View your app in AI Studio: https://ai.studio/apps/0a79f788-6874-4784-9063-ca2d07840d0d
+## 🌟 第一部分：軟體介紹 (使用者指南)
 
-## Run Locally
+本軟體專為一般使用者設計，旨在簡化高品質網易雲音樂的獲取流程。
 
-**Prerequisites:**  Node.js
+### 核心功能特色
+- **多功能解析**：支援單曲連結解析、歌單/專輯連結解析，以及直接進行關鍵字音樂搜尋。
+- **完美中繼資料 (Metadata)**：下載的 `.mp3` 檔案會自動嵌入**歌曲標題**、**歌手名稱**以及**高解析度專輯封面**（ID3 標籤），讓您匯入任何播放軟體時皆能完美顯示專輯封面與歌曲資訊。
+- **同步歌詞下載**：支援同步下載隨歌附帶的 `.lrc` 時間戳格式歌詞，方便放入支援動態歌詞的撥放器中。
+- **背景下載佇列 (Download Queue)**：
+  - 批次下載或單曲下載時**不再有全螢幕 Loading 阻擋畫面**。
+  - 下載任務會被推送至右下角下載佇列中背景執行，最高支援 3 個任務並行下載。
+  - 下載面板支援自動彈出、收合（縮小）與關閉。收合後右下角會顯示進度氣泡，不干擾您的操作。
+  - 下載失敗的任務會清楚標記錯誤原因，並提供單獨「重試」與頂端「重試全部」按鈕。
+- **掃碼登入突破 10 首限制**：
+  - 由於網易雲限制，未登入狀態下解析公開歌單最多只能獲取前 10 首。
+  - 設定中提供「網易雲 Cookie 配置」，整合官方 Eapi 登入協議。您只需點擊「使用掃碼登入獲取 Cookie」，使用手機網易雲 App 掃描產生的二維碼，即可一鍵完成登入並套用憑證，完美解鎖解析整張千首甚至萬首歌單的限制。
 
+---
 
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+### 如何使用本軟體？
+
+#### 1. 桌面端 (.exe 應用程式)
+1. **設定下載目錄**：
+   - 首次啟動時，點選右上角的 **「設定」 (齒輪圖示)**。
+   - 在「下載配置」下找到「預設下載目錄」，點擊 **「選擇目錄」**，指定您要儲存音樂的本機資料夾。
+2. **搜尋與解析**：
+   - 在主畫面選擇您要的解析方式：**單曲解析**、**歌單解析**、**專輯解析** 或 **音樂搜尋**。
+   - 輸入對應的關鍵字、網易雲歌曲/歌單 ID，或直接貼上從手機/電腦網易雲 App 複製的「分享連結」。
+   - 點擊按鈕開始解析。
+3. **進行下載**：
+   - 解析完成後，單曲預覽區會顯示歌曲封面、線上試聽播放器，以及「下載音訊」、「下載歌詞」按鈕。
+   - 點擊後，下載任務會立刻加入右下角下載佇列背景執行，完成後檔案會直接寫入您設定的資料夾中。
+   - 若為歌單解析，結果列表上方會提供「下載音頻 / 下載歌詞 / 下載全部」的批次按鈕，點擊後會自動將歌單中所有曲目分解並推入下載佇列中。
+4. **取得完整歌單 (掃碼登入)**：
+   - 點開右上角 **「設定」 (齒輪圖示)**，在下方「網易雲 Cookie 配置」區塊點選 **「使用掃碼登入獲取 Cookie」**。
+   - 手機打開網易雲音樂 App 掃描彈出的二維碼並確認登入，系統會自動擷取 MUSIC_U 憑證並儲存。此後解析歌單將自動獲取所有完整曲目。
+
+#### 2. 網頁版 (Web 瀏覽器)
+1. 在瀏覽器打開服務網址。
+2. 操作流程與桌面端完全一致，唯獨下載檔案時，瀏覽器會提示您將檔案下載至您瀏覽器預設的下載位置；批次下載則會由伺服器即時包裝成一個 `.zip` 壓縮檔供您下載保存。
+
+---
+
+## 🛠️ 第二部分：如何建置 (開發者指南)
+
+如果您是開發者，希望在您的本機電腦上架設開發環境、執行調試或打包成安裝檔，請參考以下步驟。
+
+### 前置準備環境
+在開始前，請確保您的系統已安裝以下工具：
+1. **Node.js** (建議 v18.0.0 或更新版本)
+2. **Rust 與 Cargo** (Tauri 編譯編譯必備，建議最新穩定版)
+3. **C++ 建置工具 (Windows 適用)** (MSVC 編譯器，Tauri 打包 Windows 程式必備)
+
+---
+
+### 環境安裝步驟
+
+#### 1. 安裝 Node.js
+- 請至 [Node.js 官方網站](https://nodejs.org/) 下載安裝 LTS 版本（通常會自動包含 `npm`）。
+
+#### 2. 安裝 Rust / Cargo
+- **Windows 使用者**：
+  - 前往 [Rustup 官方網站](https://rustup.rs/) 下載並執行 `rustup-init.exe`。
+  - 在安裝過程中，若系統提示缺少 Microsoft C++ Build Tools，請前往 [Visual Studio 生成工具下載頁面](https://visualstudio.microsoft.com/visual-cpp-build-tools/) 安裝，並勾選「使用 C++ 的桌面開發」工作負載。
+- **驗證安裝**：
+  安裝完成後，**關閉並重新打開您的終端機**，執行以下指令確認環境就緒：
+  ```bash
+  node -v
+  npm -v
+  cargo --version
+  ```
+
+---
+
+### 下載並運行開發版本
+
+1. **複製本儲存庫**：
+   ```bash
+   git clone https://github.com/Barian0517/163musicdl.barian.moe.git
+   cd 163musicdl-APP
+   ```
+
+2. **安裝專案套件依賴**：
+   ```bash
+   npm install
+   ```
+
+3. **運行開發環境**：
+   - **啟動 Tauri 桌面端開發視窗 (Rust + React)**：
+     ```bash
+     npx tauri dev
+     ```
+     *這會啟動前端 Vite 開發伺服器，並使用 Cargo 編譯 Rust 後端代碼，最後彈出包含網易雲下載器的桌面應用程式視窗。*
+
+   - **啟動網頁端開發伺服器 (Node.js/Express + React)**：
+     ```bash
+     npm run dev
+     ```
+     *這會使用 tsx 執行背景 Node.js 伺服器，包含所有的 `/api/*` 路由。啟動完成後，您可直接以瀏覽器訪問 `http://localhost:3000` 進行測試與開發。*
+
+---
+
+### 打包與建置安裝程序 (Production Build)
+
+當開發完成，您可以使用以下指令進行生產環境的打包建置。
+
+#### 1. 打包 Tauri 桌面端應用程式
+執行以下指令來打包適合您當前作業系統的安裝檔與執行檔：
+```bash
+npx tauri build
+```
+- **產出檔案路徑 (Windows 平台)**：
+  - **Windows MSI 安裝包**：`src-tauri/target/release/bundle/msi/`
+  - **Windows NSIS 簡易安裝 EXE 檔**：`src-tauri/target/release/bundle/nsis/`
+  - **綠色免安裝獨立執行檔 (.exe)**：`src-tauri/target/release/app.exe`
+
+#### 2. 打包網頁端靜態資源
+如果您想將網頁版部署至雲端伺服器（例如 Render、Vercel 或 Docker 容器），請使用以下指令打包前端：
+```bash
+npm run build:frontend
+```
+- 前端會被編譯並打包至專案 root 目錄下的 `/dist` 文件夾中。後端 Express 伺服器 (`server.ts`) 將自動託管該資料夾。
+
+---
+
+## 📄 授權條款 (License)
+本專案採用 Apache-2.0 授權條款進行許可。

@@ -6,6 +6,9 @@
   "scripts": {
     "dev": "tsx server.ts",
     "build": "vite build && esbuild server.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=dist/server.cjs",
+    "dev:frontend": "vite",
+    "build:frontend": "vite build",
+    "tauri": "tauri",
     "start": "node dist/server.cjs",
     "preview": "vite preview",
     "clean": "rm -rf dist server.js",
@@ -14,6 +17,7 @@
   "dependencies": {
     "@google/genai": "^1.29.0",
     "@tailwindcss/vite": "^4.1.14",
+    "@tauri-apps/api": "^2.11.0",
     "@vitejs/plugin-react": "^5.0.4",
     "archiver": "^8.0.0",
     "axios": "^1.16.1",
@@ -29,6 +33,7 @@
     "vite": "^6.2.3"
   },
   "devDependencies": {
+    "@tauri-apps/cli": "^2.11.2",
     "@types/archiver": "^7.0.0",
     "@types/express": "^4.17.21",
     "@types/node": "^22.14.0",
